@@ -1,5 +1,10 @@
 # Docker 简明教程
 
+> **我使用的环境**
+>
+> - 操作系统：CentOS 7.9
+> - Docker 版本：24.0.2
+
 ![Docker Architecture diagram](https://docs.docker.com/assets/images/architecture.svg)
 
 ## 概述
@@ -121,6 +126,153 @@ docker container run hello-world
 | **方便管理**     | 容器和虚拟化都有配套的管理工具，可以方便地创建、启动、停止和删除环境。 |
 | **用于多种场景** | 两者都广泛应用于各种场景，如应用部署、测试、开发环境搭建等。 |
 
+## 运行一个 nginx 容器
+
+```shell
+# 下载镜像
+docker pull nginx
+
+# 使用 nginx 镜像运行一个容器实例
+docker container run --publish 80:80 nginx
+
+# 打开另一个窗口，检查 nginx 是否正常工作
+curl localhost:80
+```
+
+执行`docker container run`时:
+
+1. 如果本地没有镜像，则会先下载镜像，默认镜像下载地址是 Docker hub；
+2. 默认下载最新版本镜像，使用 latest 便签辨识。（ 默认下载 nginx:latest ）；
+3. 然后按照指令运行容器，上述例子中添加了一条端口映射，将容器的 80 端口映射到主机的 80端口，通过 `--publish`参数告知 docker 服务器，此参数也可以简写为 `-p`。
+
+通过 `curl`命令，我们可以访问 nginx 的欢迎页面。
+
+```shell
+$ curl localhost:80
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+
+```
+
+> 关闭容器，请回到终端使用 `control + C`结束，即可
+
+### 进步一步操作
+
+运行一个新的容器，
+
+- 通过 `--name` 指定容器名称；
+- 通过 `-d` 参数让容器后台运行；
+- 通过镜像标签指定运行版本（nginx:1.24）。
+
+> 为了实验方便，我们可以使用 `--rm` 参数，意思是容器退出后删除容器
+
+```shell
+docker container run  --rm  -p 80:80 --name nginx -d nginx:1.24 
+```
+
+### 容器操作
+
+- 查看所有容器：`docker ps -a`  或者 `docker container ls -a`；
+
+- 启动容器：`docker start  <容器名称，Hash>` 或者 `docker container stop  <容器名称，Hash>`；
+- 停止容器：`docker stop <容器名称，Hash>` 或者 `docker container stop  <容器名称，Hash>` ；
+- 删除容器 `docker rm <容器名称，Hash>` 或者`docker container rm  <容器名称，Hash>` ；
+
+### 与容器交互
+
+进入已经运行的容器内部：`docker container exec -it nginx bash`
+
+运行容器并与容器交互：`docker container run --rm -p 81:80 --name nginx-2 -it  nginx:1.24 bash`
+
+- `-it` 选项表示在容器中开启一个交互式的 TTY
+- `bash`表示在容器内部运行一个交互式 shell
+
+## 容器网络
+
+在上面的演示案例中，使用的 -p （--publish）参数公开容器的端口，让我们可以直接访问容器提供的服务。
+
+默认情况下：
+
+- 每个容器连接到一个私有虚拟网络 "桥（brige） "上
+
+- 每个虚拟网络通过主机IP的NAT防火墙进行路由
+
+- 一个虚拟网络上的所有容器都可以相互连通，不需要-p
+
+- 最好的做法是为每个应用程序创建一个新的虚拟网络：
+
+  - 网络 "my_web_app "用于 mysql 和 php/apache 容器
+
+  - 网络 "my_api "用于 mongo 和 nodejs 容器
+
+快速查看容器端口：`docker port <容器名称，Hash>`或者`docker container port  <容器名称，Hash>` ；
+
+### 查看网络
+
+**查看网络：`docker network ls`**
+
+Docker 支持多种类型的网络模式，其中包括 `bridge`、`host` 和 `none`。它们各自的特性和用途如下：
+
+1. **Bridge**：Bridge 网络是 Docker 的默认网络模式。当你创建一个新的 Docker 容器且没有指定网络，Docker 就会将该容器连接到 Bridge 网络。在 Bridge 网络中，每一个 Docker 容器都是在一个隔离的网络环境中运行，容器之间可以通过网络互相通信。此外，容器也可以通过宿主机与外部网络通信，但需要通过端口映射（port mapping）来实现。
+2. **Host**：在 Host 网络模式下，Docker 容器共享宿主机的网络命名空间，也就是说，容器会直接使用宿主机的网络。在这种模式下，容器可以直接使用宿主机的网络接口和端口，不需要通过端口映射就可以与外部网络通信。
+3. **None**：None 网络模式是一种特殊的网络模式，容器在这种网络模式下会有自己的网络命名空间，但不会进行任何网络设备和端口的配置。因此，容器无法与外部网络通信，也无法与其他容器通信。
+
+这三种网络模式可以满足大部分的使用需求。但在某些复杂的场景中，你可能需要创建自定义的网络。Docker 支持创建自定义的网络，你可以选择使用 Bridge 网络、Overlay 网络或者 MACVLAN 网络等多种类型。自定义网络可以让你更灵活地控制容器的网络环境，例如实现容器间的网络隔离，或者创建跨主机的容器网络等。
+
+**查看网络详细配置：`docker network inspect`**
+
+### 配置一个 nginx 容器的网络连接
+
+```shell
+# 创建容器
+docker container run --rm -p 80:80 -d --name nginx nginx
+
+# 查看容器网络信息
+docker network inspect bridge
+
+# 创建一个新的网络
+docker network create my_net --driver bridge
+
+# 将 nginx 的网络连接到 my_net 
+docker network connect my_net nginx
+
+# 将 nginx 从bridge断开连接
+docker network disconnect bridge nginx
+
+# 查看网络配置信息
+docker network inspect bridge 
+docker network inspect my_net
+
+# 也可以使用 --network 命令，在创建容器时就指定网络
+docker container run --rm -p 80:80 -d --name nginx --network my_net nginx
+```
+
+### 默认的网络安全配置
+
+1. 前后端应用位于同一 Docker网络上；
+2. 容器间的通信永远不会离开容器；
+3. 所有外部暴露的端口默认关闭，需要手动指定暴露端口，使用 -p 或者 --publish；
+4. 随着 Swarm 和 Overlay 网络出现，可以处理更复杂的网络要求。
+
+### DNS配置
+
+Docker 的 DNS 解析系统主要用于在 Docker 容器之间进行服务发现。当你使用 Docker 创建网络时，Docker 将在每个网络上自动启动一个 DNS 服务器，并为该网络上的每个容器配置 DNS 客户端，使得容器可以通过服务名进行通信，而不需要知道其他容器的 IP 地址。
+
+- 当你启动一个新的 Docker 容器时，如果你在 `docker run` 命令中使用 `--name` 选项为容器指定了一个名字，那么这个名字就会被 Docker DNS 服务器用作容器的主机名
+- Docker DNS 服务器也支持使用别名（alias）。当你在 `docker network connect` 命令中使用 `--alias` 选项时，你可以为一个容器添加额外的别名。
+
+```shell
+docker network connect --alias alias1 my_network my_service
+```
+
+在这种情况下，`my_network` 网络上的其他容器可以通过 `my_service` 或 `alias1` 来访问 `my_service` 容器。
+
+> **注意**
+>
+> Docker 的 DNS 解析系统只对同一个网络上的容器有效。如果两个容器不在同一个网络，那么它们不能通过主机名或别名进行通信。如果你希望两个容器能够通过主机名或别名进行通信，你需要确保它们连接到同一个网络。
+
 ## 镜像
 
 Docker镜像（Docker Image）是构建Docker容器的基础。它包含了运行一个应用所需的所有内容：应用程序本身、依赖的库、运行环境和系统工具等。
@@ -131,18 +283,7 @@ Docker镜像（Docker Image）是构建Docker容器的基础。它包含了运�
 - 你可以在同一个镜像上运行许多容器
 - Docker 的默认镜像 "注册处 "叫做 [Docker Hub](hub.docker.com)
 
-## 运行一个 nginx 容器
 
-```shell
-# 下载镜像
-docker pull nginx
-
-# 使用 nginx 镜像运行一个容器实例
-docker container run --publish 80:80 nginx
-
-# 检查 nginx 是否正常工作
-curl localhost:80
-```
 
 
 
