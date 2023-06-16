@@ -189,7 +189,7 @@ docker container run  --rm  -p 80:80 --name nginx -d nginx:1.24
 - `-it` 选项表示在容器中开启一个交互式的 TTY
 - `bash`表示在容器内部运行一个交互式 shell
 
-## 容器网络
+## 网络
 
 在上面的演示案例中，使用的 -p （--publish）参数公开容器的端口，让我们可以直接访问容器提供的服务。
 
@@ -289,7 +289,7 @@ Docker镜像（Docker Image）是构建Docker容器的基础。它包含了运�
 
 ### 创建镜像
 
-- 镜像可以使用 Dockerfile 创建，或将已经运行的容器打包成一个镜像
+- 镜像可以使用 Dockerfile 创建，或将已经运行的容器打包成一个镜像。
 
 下面，我们**使用 Dockerfile 文件构建一个Nginx镜像**：
 
@@ -321,7 +321,7 @@ EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 ```
 
-使用 build 命令构建镜像
+将以上内容写入一个名为 Dockerfile 的文件，使用 build 命令构建镜像。
 
 ```
 docker image build -t customnginx .
@@ -330,6 +330,8 @@ docker image build -t customnginx .
 - `docker image build`: 这是 Docker 的命令，用于从 Dockerfile 构建新的 Docker 镜像。
 - `-t customnginx`: `-t` 是指定新构建的 Docker 镜像的标签（或称之为名称）。在这里，新镜像的名称被指定为 `customnginx`。
 - `.`: 这指示 Docker 在当前目录查找 `Dockerfile`。
+
+> Dockerhub 上很多镜像都会提供Dockerfile文件，例如 nginx 的 Dockerfile 我们可以进入 [Nginx 的主页](https://hub.docker.com/_/nginx)，在 Overview 下的 Supported tags and respective `Dockerfile` links 看到相关链接。
 
 **使用运行中的容器创建一个镜像**
 
@@ -385,5 +387,163 @@ sequenceDiagram
 
 ```
 
+
+
 ## 存储
 
+Docker 容器的存储主要涉及到两个概念：镜像存储和持久化存储。
+
+1. 镜像存储: Docker 镜像是构建容器的基础，它包含了运行容器所需的所有代码和依赖。每个镜像都是多个层次的只读文件系统的集合。当构建或更新镜像时，Docker 会在已有的只读层上添加一个新的只读层。这些层会被缓存在 Docker 主机的磁盘上。当创建一个新的容器时，Docker 会在镜像的顶层添加一个可写层，这就是容器层。
+
+2. 持久化存储: 默认情况下，容器的数据在容器终止时会丢失，因为 Docker 容器设计为一次性的、不可变的实体。为了在容器之间和容器重启后保留数据，Docker 提供了几种持久化存储的方法：数据卷（volumes）、绑定挂载（bind mounts）和临时文件系统（tmpfs mounts）。
+
+   - 数据卷（Volumes）: Volumes 是 Docker 最推荐的持久化存储方式。它们在 Docker 主机上创建特殊的目录，并允许容器读写这些目录。数据卷可以在多个容器之间共享，并且在容器删除时可以继续存在。（`-v my_volume:/var/lib/mysql`）
+
+   - 绑定挂载（Bind Mounts）: Bind mounts 允许容器访问 Docker 主机上的任意目录或文件。绑定挂载在 Docker 主机上创建的文件和目录在容器内部和外部都有相同的权限。（`-v /path/to/host/dir:/var/lib/mysql`）
+
+   - 临时文件系统（tmpfs Mounts）: tmpfs mounts 在 Docker 主机的内存中创建文件或目录，对容器提供了一个临时的存储空间。当容器停止时，tmpfs mount 中的数据将会丢失。
+
+注意，容器存储的使用和管理需要考虑数据的生命周期、数据的一致性和容器的可移植性等因素。
+
+### Volume
+
+Volume 的主要特性和优点包括：
+
+1. 生命周期独立于容器：Volume 的生命周期独立于任何特定的容器。即使创建 Volume 的容器被删除，Volume 本身和其内容还会保留。
+2. 容器间共享：Volume 可以被多个容器同时挂载和共享数据。
+3. 数据一致性：Volume 中的数据在任何时候对所有挂载该 Volume 的容器都是可见的，并且可以立即看到其他容器对 Volume 的更改。
+4. 主机文件系统隔离：Volume 存在于 Docker 的管理范围之内，不依赖于主机的文件系统。这意味着即使 Docker 容器运行在不同的操作系统或文件系统的主机上，Volume 仍可以正常工作。
+5. 安全性：由于 Volume 的内容被 Docker 管理，因此可以通过 Docker 提供的安全机制（如 AppArmor、SELinux、GRSEC 等）来增强其安全性。
+
+**Volume 基本命令**
+
+- 创建 Volume：`docker volume create my-volume`
+- 列出所有的 Volume：`docker volume ls`
+- 使用 Volume：在运行容器时使用 `-v` 参数挂载 Volume，例如：`docker run -v my-volume:/path/in/container my-image`
+- 删除 Volume：`docker volume rm my-volume`
+
+**定义 Volume 的方式**
+
+1. 在 Dockerfile 中声明：
+
+   在 Dockerfile 中定义 VOLUME 很方便，例如，申明 Mysql 的数据存储目录，使用`VOLUME /var/lib/mysql` 。这样创建的 Volume 会在容器启动时自动挂载，挂载路径是 Docker 自动分配的，我们无法控制。如果我们需要把 Volume 挂载到宿主机的指定路径，那么就需要在运行容器的时候，使用 `-v` 参数来指定。
+
+2. 使用 -v 声明：`docker container run --rm -p 3306:3306 -d -v /opt/mysql:/var/lib/mysql mysql`
+
+> **笔记：**
+>
+> 我们好像没有必要在 Dockerfile 中定义 Volume，在启动容器时，我们使用 -v 就可以完成相应步骤？
+>
+> 其实不然，
+>
+> 1. 在 Dockerfile 中定义 `VOLUME` 可以作为一种标识，向使用镜像的人显示哪些路径是设计为持久存储的。这对于后来接手项目的人来说是一个很好的指南。
+> 2. 在 Dockerfile 中定义的 volume 在容器删除后会保留，确保关键数据不会丢失。
+> 3. 在 Dockerfile 中定义的 volume 可以很容易地在容器之间共享，无论它们是否在同一时刻运行。
+> 4. 使用 volume 可以帮助将数据从容器文件系统隔离出来，并可能提高某些类型的磁盘 IO 的性能。
+
+我们使用官方的 mysql 来演示一下，[Dockerfile](https://github.com/docker-library/mysql/blob/1bfa4724fe112b4246672ed2b3c42142f17d5636/8.0/Dockerfile.oracle)中定义了` VOLUME /var/lib/mysql`
+
+```shell
+ docker container run --rm -p 3306:3306 -e MYSQL_RANDOM_ROOT_PASSWORD=true mysql
+
+```
+
+-  `-e MYSQL_RANDOM_ROOT_PASSWORD=true` 是让MySQL随机生成一个root密码，密码会输出到日志中，`GENERATED ROOT PASSWORD: NGCQ7C2d97YNPque/wpk+IUOtR2AJ6hg`
+- 使用 `--rm` 参数，如果没有定义 `-v` 选项，容器删除时，volume 也会一并删除。（如果你在运行容器时使用了 `--rm` 标志，并且希望保留你的数据，你应该使用命名的数据卷，而不是未命名的数据卷。）
+
+```shell
+# 查看卷,我们可以看到，已经自动生成了一个 Volume
+$ docker volume ls
+DRIVER    VOLUME NAME
+local     ede02e1f84d55d5768a558c49eef59cce25a9b709b00d684034c3f7ace701b99
+local     my_volume
+
+# 查看卷的详细信息
+$ docker volume inspect ede02e1f84d55d5768a558c49eef59cce25a9b709b00d684034c3f7ace701b99 
+[
+    {
+        "CreatedAt": "2023-06-17T07:03:13+08:00",
+        "Driver": "local",
+        "Labels": {
+            "com.docker.volume.anonymous": ""
+        },
+        "Mountpoint": "/var/lib/docker/volumes/ede02e1f84d55d5768a558c49eef59cce25a9b709b00d684034c3f7ace701b99/_data",
+        "Name": "ede02e1f84d55d5768a558c49eef59cce25a9b709b00d684034c3f7ace701b99",
+        "Options": null,
+        "Scope": "local"
+    }
+]
+```
+
+使用 -v 指定 Volume
+
+```shell
+ docker container run --rm -p 3306:3306 -e MYSQL_RANDOM_ROOT_PASSWORD=true  -v my_volume:/var/lib/mysql mysql
+```
+
+> **注意**
+>
+> `-v` 可以指定主机路径挂载：`-v /path/to/host/dir:/var/lib/mysql`，也可以指定已经创建的卷 `-v my_volume:/var/lib/mysql`。如果指定的是卷，是不能使用 `-v my_volume/mysql:/var/lib/mysql`  这样的方式的，你只能挂载整个数据卷。如果你想使用子目录，你需要使用主机路径挂载（bind mounts），而不是数据卷。
+
+### bind mounts
+
+```shell
+ docker container run --rm -p 3306:3306 -e MYSQL_RANDOM_ROOT_PASSWORD=true  -v /opt/mysql:/var/lib/mysql mysql
+```
+
+### tmpfs mounts
+
+tmpfs 是一种将文件存储在主机内存中的临时文件系统。当你使用 tmpfs 挂载点在 Docker 容器中创建一个临时文件系统时，该文件系统的内容存储在宿主机的 RAM 中，而不是在硬盘上。这意味着：
+
+- 数据读写速度非常快，因为它们在内存中。
+- 当容器停止时，tmpfs 中的数据将被自动删除，不会保留下来。这对于临时数据或者敏感数据非常有用，例如，会话密钥，密码等。
+
+以下是如何在运行 Docker 容器时使用 tmpfs 的一个例子：
+
+```bash
+docker run -d --tmpfs /tmp:rw,size=512M my_image
+```
+
+在这个例子中：
+
+- `--tmpfs /tmp:rw,size=512M` 将创建一个大小为 512M 的 tmpfs 并挂载到容器的 `/tmp` 目录。`rw` 表示这个 tmpfs 是可读写的。
+- `my_image` 是你要运行的 Docker 镜像的名称。
+
+现在，容器内的应用可以将 `/tmp` 用作一个临时存储区，所有的数据都将存储在内存中，当容器停止时，这些数据将被删除。
+
+---
+
+## 恭喜你
+
+你已经完成 docker 的第一阶段学习，下面我们将学习如何操作多个容器。
+
+---
+
+## [Compose](https://docs.docker.com/compose/)
+
+**Docker Compose** 是一个用于定义和运行多容器 Docker 应用的工具。通过 Compose，你可以使用 YAML 文件来配置你的应用的服务。然后，使用一个命令，就可以创建并启动所有的服务。简单来说，它是一个帮助组织和管理多个 Docker 容器的工具。
+
+例如，一个典型的 web 应用可能包括一个 web 服务器，一个后台数据库，以及一个在后台运行的工作队列。使用 Docker Compose，你可以在一个 YAML 文件中定义这些服务，然后只需运行一个命令就可以启动整个应用。
+
+### 安装 
+
+> **笔记**
+>
+> 官网上有两个版本：
+>
+> - **Docker Compose  Plugin**：是 Docker CLI 的一个插件，使用 `docker compose`命令，它是 Docker Desktop（对于 Windows 和 MacOS）以及 Docker 19.03 以上版本的一部分。
+> - **Docker Compose Standalone **，是一个独立的二进制包，使用`docker-compose`命令，这种模式下的 Docker Compose 可以在任何安装了 Docker 的机器上运行，包括较老版本的 Docker。
+
+Docker推荐使用  Docker Compose  Plugin ，因为它更好地与Docker CLI集成，提供更好的性能，并且它是Docker的未来发展方向。
+
+Docker Desktop 已经集成了 Compose ,不用安装。如果你使用的是 Engine，需要执行以下命令安装：`sudo yum install docker-compose-pugin -y`
+
+
+
+
+
+## Swam
+
+**Docker Swarm** 是 Docker 的原生集群管理和编排工具。它允许你在多个 Docker 主机上创建和管理一个 Docker 集群，你可以将这些 Docker 主机看作一个整体来运行 Docker 容器。Swarm 提供了服务发现，负载均衡，安全的网络，服务扩缩容等功能。
+
+例如，如果你有一个需要大量计算资源的应用，你可以使用 Docker Swarm 在多个 Docker 主机上创建一个集群，然后将你的应用部署到这个集群上。这样，你的应用就可以利用集群中所有主机的计算资源。
